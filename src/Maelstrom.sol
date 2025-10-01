@@ -6,6 +6,7 @@ import {ERC20} from 'node_modules/openzeppelin/contracts/token/ERC20/ERC20.sol';
 import {SafeERC20} from 'node_modules/openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import {SafeMath} from "node_modules/openzeppelin/contracts/utils/math/SafeMath.sol";
 import {LiquidityPoolToken} from "./LiquidityPoolToken.sol";
+import {SD59x18,exp} from "node_modules/@prb/math/src/SD59x18.sol";
 
 contract Maelstrom {
     using SafeMath for uint256;
@@ -45,16 +46,20 @@ contract Maelstrom {
         SafeERC20.safeTransferFrom(IERC20(token), from, address(this), tokenAmount);
     }
 
-    function calculateFinalPrice(uint256 decayedSellVolume,uint256 sellPrice,uint256 decayedBuyVolume,uint256 buyPrice) internal {
+    function calculateFinalPrice(uint256 decayedSellVolume,uint256 sellPrice,uint256 decayedBuyVolume,uint256 buyPrice) internal pure returns (uint256){
         if(decayedSellVolume + decayedBuyVolume == 0) return (sellPrice + buyPrice) / 2;
         return (decayedSellVolume * sellPrice + decayedBuyVolume * buyPrice) / (decayedSellVolume + decayedBuyVolume);
     }
 
+    function _getDecayValue(uint256 initialValue,int256 timeElapsed) internal pure returns (uint256){
+        return (uint256)(SD59x18.unwrap(SD59x18.wrap((int256)(initialValue)) * exp(SD59x18.wrap(timeElapsed))));  
+    }
+
     function updatePriceSellParams(address token,uint256 tokenAmount, uint256 newPrice) internal {
         PoolParams storage pool = pools[token];
-        uint256 timeElapsed = block.timestamp - pool.lastExchangeTimestamp;
-        uint256 decayedSellVolume = pool.decayedSellVolume * exp(timeElapsed);
-        uint256 decayedBuyVolume = pool.decayedBuyVolume * exp(timeElapsed);
+        int256 timeElapsed = (int256)(pool.lastExchangeTimestamp - block.timestamp);
+        uint256 decayedSellVolume = _getDecayValue(pool.decayedSellVolume,timeElapsed);
+        uint256 decayedBuyVolume = _getDecayValue(pool.decayedBuyVolume,timeElapsed);
         uint256 newDecayedSellVolume = decayedSellVolume + tokenAmount;
         pool.lastSellPrice = newPrice;
         pool.lastBuyPrice = priceBuy(token);
@@ -68,9 +73,9 @@ contract Maelstrom {
 
     function updatePriceBuyParams(address token,uint256 tokenAmount, uint256 newPrice) internal {
         PoolParams storage pool = pools[token];
-        uint256 timeElapsed = block.timestamp - pool.lastExchangeTimestamp;
-        uint256 decayedBuyVolume = pool.decayedBuyVolume * exp(timeElapsed); //exp function to be implemented or imported from a library
-        uint256 decayedSellVolume = pool.decayedSellVolume * exp(timeElapsed);
+        int256 timeElapsed = (int256)(pool.lastExchangeTimestamp - block.timestamp) ;
+        uint256 decayedSellVolume = _getDecayValue(pool.decayedSellVolume,timeElapsed);
+        uint256 decayedBuyVolume = _getDecayValue(pool.decayedBuyVolume,timeElapsed);
         uint256 newDecayedBuyVolume = decayedBuyVolume + tokenAmount;
         pool.lastSellPrice = priceSell(token);
         pool.lastBuyPrice = newPrice;
@@ -127,8 +132,7 @@ contract Maelstrom {
         receiveERC20(token, msg.sender, amount);
         LiquidityPoolToken lpt = new LiquidityPoolToken(tokenName, tokenSymbol);
         poolToken[token] = lpt;
-        pools[token] = new PoolParams({
-            multiplicationFactor: 5,
+        pools[token] = PoolParams({
             lastBuyPrice: initialPriceBuy,
             lastSellPrice: initialPriceSell,
             lastExchangeTimestamp: block.timestamp,
@@ -173,7 +177,7 @@ contract Maelstrom {
     function sell(address token, uint256 amount) public {
         receiveERC20(token, msg.sender, amount);
         (uint256 ethAmount,uint256 sellPrice) = _postSell(token, amount);
-        (bool success, ) = msg.sender.call{value: _postSell(token,amount)}(''); 
+        (bool success, ) = msg.sender.call{value: ethAmount}(''); 
         require(success, 'Transfer failed');
         emit SellTrade(token, msg.sender, amount, ethAmount, sellPrice);
     }
@@ -224,8 +228,8 @@ contract Maelstrom {
     }
 
     function swap(address tokenSell, address tokenBuy, uint256 amountToSell, uint256 minimumAmountToBuy) external {
-        uint256 ethAmount  = _postSell(tokenSell, amountToSell);
-        uint256 tokenAmount = _preBuy(tokenBuy, ethAmount);
+        (uint256 ethAmount, )  = _postSell(tokenSell, amountToSell);
+        (uint256 tokenAmount, ) = _preBuy(tokenBuy, ethAmount);
         require(tokenAmount >= minimumAmountToBuy, "Insufficient output amount");
         receiveERC20(tokenSell, msg.sender, amountToSell);
         sendERC20(tokenBuy, msg.sender, tokenAmount);
