@@ -37,7 +37,6 @@ contract Maelstrom {
     mapping(address => uint256) public ethBalance;
     mapping(address => PoolParams) public pools;
     
-
     function sendERC20(address token, address to, uint256 tokenAmount) internal {
         SafeERC20.safeTransfer(IERC20(token), to, tokenAmount);
     }
@@ -46,14 +45,35 @@ contract Maelstrom {
         SafeERC20.safeTransferFrom(IERC20(token), from, address(this), tokenAmount);
     }
 
+    function _getSubArray(address[] memory array, uint256 start, uint256 end) internal pure returns (address[] memory) {
+        require(start <= end && end < array.length, "Invalid start or end index");
+        address[] memory subArray = new address[](end - start + 1);
+        for (uint256 i = start; i <= end; i++) {
+            subArray[i - start] = array[i];
+        }
+        return subArray;
+    }
+
+    function getPoolList(uint256 start, uint256 end) external view returns (address[] memory) {
+        return _getSubArray(poolList, start, end);
+    }
+
+    function getUserPools(address user, uint256 start, uint256 end) external view returns (address[] memory) {
+        return _getSubArray(userPools[user], start, end);
+    }
+
+    function _addTokenToUserPools(address user, address token) internal {
+        userPools[user].push(token);
+        userPoolIndex[user][token] = userPools[user].length; 
+    }
+
     function calculateFinalPrice(uint256 decayedSellVolume,uint256 sellPrice,uint256 decayedBuyVolume,uint256 buyPrice) internal pure returns (uint256){
         if(decayedSellVolume + decayedBuyVolume == 0) return (sellPrice + buyPrice) / 2;
         return (decayedSellVolume * sellPrice + decayedBuyVolume * buyPrice) / (decayedSellVolume + decayedBuyVolume);
     }
 
-    function _getDecayValue(uint256 initialValue,int256 timeElapsed) internal pure returns (uint256){
-        int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap((int256)(initialValue)) * exp(SD59x18.wrap(-timeElapsed)));  
-        if(decayedAmount < 0) return 0;
+    function _getDecayValue(uint256 initialVolume,int256 timeElapsed) internal pure returns (uint256){
+        int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap((int256)(initialVolume)) * exp(SD59x18.wrap(-timeElapsed)));  
         return (uint256)(decayedAmount);
     }
 
@@ -66,6 +86,7 @@ contract Maelstrom {
         pool.lastSellPrice = newPrice;
         pool.lastBuyPrice = priceBuy(token);
         pool.decayedSellVolume = newDecayedSellVolume;
+        pool.decayedBuyVolume = decayedBuyVolume;
         pool.finalBuyPrice = calculateFinalPrice(newDecayedSellVolume, newPrice, decayedBuyVolume, pool.lastBuyPrice);
         pool.finalSellPrice = pool.finalBuyPrice;
         pool.decayedSellTime = (((block.timestamp - pool.lastSellTimestamp) * tokenAmount) + (pool.decayedSellTime * decayedSellVolume)) / (tokenAmount + decayedSellVolume);
@@ -82,6 +103,7 @@ contract Maelstrom {
         pool.lastSellPrice = priceSell(token);
         pool.lastBuyPrice = newPrice;
         pool.decayedBuyVolume = newDecayedBuyVolume;
+        pool.decayedSellVolume = decayedSellVolume;
         pool.finalBuyPrice = calculateFinalPrice(decayedSellVolume, pool.lastSellPrice, newDecayedBuyVolume, newPrice);
         pool.finalSellPrice = pool.finalBuyPrice;
         pool.decayedBuyTime = (((block.timestamp - pool.lastBuyTimestamp) * tokenAmount) + (pool.decayedBuyTime * decayedBuyVolume)) / (tokenAmount + decayedBuyVolume);
@@ -150,6 +172,7 @@ contract Maelstrom {
         ethBalance[token] = msg.value;
         poolToken[token].mint(msg.sender, amount);
         poolList.push(token);
+        _addTokenToUserPools(msg.sender, token);
         emit PoolInitialized(token,amount,msg.value,initialPriceBuy,initialPriceSell);
     }
 
@@ -186,10 +209,7 @@ contract Maelstrom {
 
     function deposit(address token) external payable {
         require(msg.value > 0, "Must send ETH to deposit");
-        if(userPoolIndex[msg.sender][token] == 0) {
-            userPools[msg.sender].push(token);
-            userPoolIndex[msg.sender][token] = userPools[msg.sender].length; 
-        }
+        if(userPoolIndex[msg.sender][token] == 0) _addTokenToUserPools(msg.sender, token);
         uint256 ethBalanceBefore = ethBalance[token];
         ethBalance[token] += msg.value;
         uint256 tokenAmount = msg.value * tokenPerETHRatio(token);
@@ -213,15 +233,16 @@ contract Maelstrom {
         ethBalance[token] -= ethAmount;
         (bool success, ) = msg.sender.call{value: (ethAmount)}('');
         if(pt.balanceOf(msg.sender) == 0){
+            //Token is removed using swap and pop method(swap it with last element and pop it O(1))
             address[] storage currentPools = userPools[msg.sender];
-            mapping(address => uint256) storage userPoolIdx = userPoolIndex[msg.sender];
+            mapping(address => uint256) storage poolIndex = userPoolIndex[msg.sender];
             uint256 index = userPoolIndex[msg.sender][token] - 1;
-            userPoolIdx[token] = 0;
+            poolIndex[token] = 0;
             uint256 lastIndex = userPools[msg.sender].length - 1;
             if(index != 0){
                 address lastToken = currentPools[lastIndex];
                 currentPools[index] = lastToken;
-                userPoolIdx[lastToken] = index + 1; 
+                poolIndex[lastToken] = index + 1; 
             }
             currentPools.pop();
         }
@@ -236,23 +257,6 @@ contract Maelstrom {
         receiveERC20(tokenSell, msg.sender, amountToSell);
         sendERC20(tokenBuy, msg.sender, tokenAmount);
         emit SwapTrade(tokenSell, tokenBuy, msg.sender, amountToSell, tokenAmount);
-    }
-
-    function _getSubArray(address[] memory array, uint256 start, uint256 end) internal pure returns (address[] memory) {
-        require(start <= end && end < array.length, "Invalid start or end index");
-        address[] memory subArray = new address[](end - start + 1);
-        for (uint256 i = start; i <= end; i++) {
-            subArray[i - start] = array[i];
-        }
-        return subArray;
-    }
-
-    function getPoolList(uint256 start, uint256 end) external view returns (address[] memory) {
-        return _getSubArray(poolList, start, end);
-    }
-
-    function getUserPools(address user, uint256 start, uint256 end) external view returns (address[] memory) {
-        return _getSubArray(userPools[user], start, end);
     }
 
 }
