@@ -14,6 +14,8 @@ contract Maelstrom {
         uint256 lastBuyPrice;
         uint256 lastSellPrice;
         uint256 lastExchangeTimestamp;
+        uint256 initialSellPrice;
+        uint256 initialBuyPrice;
         uint256 finalBuyPrice;
         uint256 finalSellPrice;
         uint256 lastBuyTimestamp;
@@ -24,12 +26,12 @@ contract Maelstrom {
         uint256 decayedSellVolume;
     }
     event PoolInitialized(address indexed token, uint256 tokenAmount, uint256 ethAmount, uint256 initialPriceBuy, uint256 initialPriceSell);
-    event BuyTrade(address indexed token,address indexed trader,uint256 ethAmount,uint256 tokenAmount,uint256 buyPrice);
-    event SellTrade(address indexed token,address indexed trader,uint256 tokenAmount,uint256 ethAmount,uint256 sellPrice);
-    event SwapTrade(address indexed tokenSold,address indexed tokenBought,address indexed trader,uint256 tokenAmountSold,uint256 tokenAmountBought);
-    event Deposit(address indexed token,address indexed user,uint256 ethAmount,uint256 tokenAmount,uint256 lpTokensMinted);
-    event Withdraw(address indexed token,address indexed user,uint256 ethAmount,uint256 tokenAmount,uint256 lpTokensBurned);
-    uint256 multiplicationFactor = 5;
+    event BuyTrade(address indexed token, address indexed trader, uint256 ethAmount, uint256 tokenAmount, uint256 buyPrice);
+    event SellTrade(address indexed token, address indexed trader, uint256 tokenAmount, uint256 ethAmount, uint256 sellPrice);
+    event SwapTrade(address indexed tokenSold, address indexed tokenBought, address indexed trader, uint256 tokenAmountSold, uint256 tokenAmountBought, uint256 sellPrice, uint256 buyPrice);
+    event Deposit(address indexed token, address indexed user, uint256 ethAmount, uint256 tokenAmount, uint256 lpTokensMinted);
+    event Withdraw(address indexed token, address indexed user, uint256 ethAmount, uint256 tokenAmount, uint256 lpTokensBurned);
+    uint256 spreadConstant = 5;
     address[] public poolList;
     mapping(address => mapping(address => uint256)) public userPoolIndex;  //index+1 is stored
     mapping(address => address[]) public userPools;
@@ -67,66 +69,68 @@ contract Maelstrom {
         userPoolIndex[user][token] = userPools[user].length; 
     }
 
-    function calculateFinalPrice(uint256 decayedSellVolume,uint256 sellPrice,uint256 decayedBuyVolume,uint256 buyPrice) internal pure returns (uint256){
+    function calculateFinalPrice(uint256 decayedSellVolume, uint256 sellPrice, uint256 decayedBuyVolume, uint256 buyPrice) internal pure returns (uint256){
         if(decayedSellVolume + decayedBuyVolume == 0) return (sellPrice + buyPrice) / 2;
         return (decayedSellVolume * sellPrice + decayedBuyVolume * buyPrice) / (decayedSellVolume + decayedBuyVolume);
     }
 
-    function _getDecayValue(uint256 initialVolume,int256 timeElapsed) internal pure returns (uint256){
+    function _getDecayValue(uint256 initialVolume, int256 timeElapsed) internal pure returns (uint256){
         int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap((int256)(initialVolume)) * exp(SD59x18.wrap(-timeElapsed)));  
         return (uint256)(decayedAmount);
     }
 
-    function updatePriceSellParams(address token,uint256 tokenAmount, uint256 newPrice) internal {
+    function updatePriceSellParams(address token, uint256 tokenAmount, uint256 newPrice) internal {
         PoolParams storage pool = pools[token];
         int256 timeElapsed = (int256)(block.timestamp - pool.lastExchangeTimestamp);
-        uint256 decayedSellVolume = _getDecayValue(pool.decayedSellVolume,timeElapsed);
-        uint256 decayedBuyVolume = _getDecayValue(pool.decayedBuyVolume,timeElapsed);
+        uint256 decayedSellVolume = _getDecayValue(pool.decayedSellVolume, timeElapsed);
+        uint256 decayedBuyVolume = _getDecayValue(pool.decayedBuyVolume, timeElapsed);
         uint256 newDecayedSellVolume = decayedSellVolume + tokenAmount;
+        uint256 newInitialSellPrice = (pool.initialSellPrice * (100 - spreadConstant)) / 100;
         pool.lastSellPrice = newPrice;
-        pool.lastBuyPrice = priceBuy(token);
+        pool.initialSellPrice = newInitialSellPrice; 
         pool.decayedSellVolume = newDecayedSellVolume;
         pool.decayedBuyVolume = decayedBuyVolume;
-        pool.finalBuyPrice = calculateFinalPrice(newDecayedSellVolume, newPrice, decayedBuyVolume, pool.lastBuyPrice);
+        pool.finalBuyPrice = calculateFinalPrice(newDecayedSellVolume, newInitialSellPrice, decayedBuyVolume, pool.initialBuyPrice);
         pool.finalSellPrice = pool.finalBuyPrice;
         pool.decayedSellTime = (((block.timestamp - pool.lastSellTimestamp) * tokenAmount) + (pool.decayedSellTime * decayedSellVolume)) / (tokenAmount + decayedSellVolume);
         pool.lastSellTimestamp = block.timestamp;
         pool.lastExchangeTimestamp = block.timestamp;
     }
 
-    function updatePriceBuyParams(address token,uint256 tokenAmount, uint256 newPrice) internal {
+    function updatePriceBuyParams(address token, uint256 tokenAmount, uint256 newPrice) internal {
         PoolParams storage pool = pools[token];
         int256 timeElapsed = (int256)(block.timestamp - pool.lastExchangeTimestamp);
-        uint256 decayedSellVolume = _getDecayValue(pool.decayedSellVolume,timeElapsed);
-        uint256 decayedBuyVolume = _getDecayValue(pool.decayedBuyVolume,timeElapsed);
+        uint256 decayedSellVolume = _getDecayValue(pool.decayedSellVolume, timeElapsed);
+        uint256 decayedBuyVolume = _getDecayValue(pool.decayedBuyVolume, timeElapsed);
         uint256 newDecayedBuyVolume = decayedBuyVolume + tokenAmount;
-        pool.lastSellPrice = priceSell(token);
+        uint256 newInitialBuyPrice = (pool.initialBuyPrice * (100 + spreadConstant)) / 100;
         pool.lastBuyPrice = newPrice;
+        pool.initialBuyPrice = newInitialBuyPrice;
         pool.decayedBuyVolume = newDecayedBuyVolume;
         pool.decayedSellVolume = decayedSellVolume;
-        pool.finalBuyPrice = calculateFinalPrice(decayedSellVolume, pool.lastSellPrice, newDecayedBuyVolume, newPrice);
+        pool.finalBuyPrice = calculateFinalPrice(decayedSellVolume, pool.initialSellPrice, newDecayedBuyVolume, newInitialBuyPrice);
         pool.finalSellPrice = pool.finalBuyPrice;
         pool.decayedBuyTime = (((block.timestamp - pool.lastBuyTimestamp) * tokenAmount) + (pool.decayedBuyTime * decayedBuyVolume)) / (tokenAmount + decayedBuyVolume);
         pool.lastBuyTimestamp = block.timestamp;
         pool.lastExchangeTimestamp = block.timestamp;
     }
 
-    function _postSell(address token, uint256 amount) internal returns (uint256,uint256) {
+    function _postSell(address token, uint256 amount) internal returns (uint256, uint256) {
         uint256 sellPrice = priceSell(token);
         uint256 ethAmount = amount * sellPrice;
         require((ethBalance[token] * 10) / 100 >= ethAmount, "Not more than 10% of eth in pool can be used for swap");
         ethBalance[token] -= ethAmount;
-        updatePriceSellParams(token,amount,sellPrice);
-        return (ethAmount,sellPrice);
+        updatePriceSellParams(token, amount, sellPrice);
+        return (ethAmount, sellPrice);
     }
 
-    function _preBuy(address token, uint256 ethAmount) internal returns (uint256,uint256) {
+    function _preBuy(address token, uint256 ethAmount) internal returns (uint256, uint256) {
         ethBalance[token] += ethAmount;
         uint256 buyPrice = priceBuy(token);
         uint256 tokenAmount = ethAmount / buyPrice;
         require((ERC20(token).balanceOf(address(this)) * 10) / 100 >= tokenAmount, "Not more than 10% of tokens in pool can be used for swap");
-        updatePriceBuyParams(token,tokenAmount, buyPrice);
-        return (tokenAmount,buyPrice);
+        updatePriceBuyParams(token, tokenAmount, buyPrice);
+        return (tokenAmount, buyPrice);
     }
 
     function priceBuy(address token) public view returns (uint256){
@@ -135,8 +139,7 @@ contract Maelstrom {
         uint256 finalBuyPrice = pool.finalBuyPrice;
         uint256 timeElapsed = block.timestamp - pool.lastExchangeTimestamp;
         if(timeElapsed >= pool.decayedBuyTime) return finalBuyPrice; 
-        uint256 currentPrice = lastBuyPrice - (((lastBuyPrice - finalBuyPrice) * timeElapsed) / (pool.decayedBuyTime)); 
-        return (currentPrice * (100 + multiplicationFactor)) / 100;
+        return lastBuyPrice - (((lastBuyPrice - finalBuyPrice) * timeElapsed) / (pool.decayedBuyTime)); 
     }
 
     function priceSell(address token) public view returns(uint256){
@@ -145,14 +148,13 @@ contract Maelstrom {
         uint256 finalSellPrice = pool.finalSellPrice;
         uint256 timeElapsed = block.timestamp - pool.lastExchangeTimestamp;
         if(timeElapsed >= pool.decayedSellTime) return finalSellPrice;
-        uint256 currentPrice = lastSellPrice + (((finalSellPrice - lastSellPrice) * timeElapsed) / (pool.decayedSellTime));
-        return (currentPrice * (100 - multiplicationFactor)) / 100;
+        return lastSellPrice + (((finalSellPrice - lastSellPrice) * timeElapsed) / (pool.decayedSellTime));
     }
 
     function initializePool(address token, uint256 amount, uint256 initialPriceBuy, uint256 initialPriceSell) public payable {
         require(address(poolToken[token]) == address(0), "pool already initialized");
         string memory tokenName = string.concat(ERC20(token).name(), " Maelstrom Liquidity Pool Token");
-        string memory tokenSymbol = string.concat("m",ERC20(token).symbol());
+        string memory tokenSymbol = string.concat("m", ERC20(token).symbol());
         receiveERC20(token, msg.sender, amount);
         LiquidityPoolToken lpt = new LiquidityPoolToken(tokenName, tokenSymbol);
         poolToken[token] = lpt;
@@ -160,8 +162,10 @@ contract Maelstrom {
             lastBuyPrice: initialPriceBuy,
             lastSellPrice: initialPriceSell,
             lastExchangeTimestamp: block.timestamp,
-            finalBuyPrice: initialPriceBuy,
-            finalSellPrice: initialPriceSell,
+            finalBuyPrice: 0,
+            finalSellPrice: 0,
+            initialSellPrice: 0,
+            initialBuyPrice: 0,
             lastBuyTimestamp: block.timestamp,
             lastSellTimestamp: block.timestamp,
             decayedBuyTime: 0, 
@@ -173,7 +177,7 @@ contract Maelstrom {
         poolToken[token].mint(msg.sender, amount);
         poolList.push(token);
         _addTokenToUserPools(msg.sender, token);
-        emit PoolInitialized(token,amount,msg.value,initialPriceBuy,initialPriceSell);
+        emit PoolInitialized(token, amount, msg.value, initialPriceBuy, initialPriceSell);
     }
 
     function reserves(address token) public view returns (uint256, uint256) {
@@ -201,7 +205,7 @@ contract Maelstrom {
 
     function sell(address token, uint256 amount) public {
         receiveERC20(token, msg.sender, amount);
-        (uint256 ethAmount,uint256 sellPrice) = _postSell(token, amount);
+        (uint256 ethAmount, uint256 sellPrice) = _postSell(token, amount);
         (bool success, ) = msg.sender.call{value: ethAmount}(''); 
         require(success, 'Transfer failed');
         emit SellTrade(token, msg.sender, amount, ethAmount, sellPrice);
@@ -251,12 +255,12 @@ contract Maelstrom {
     }
 
     function swap(address tokenSell, address tokenBuy, uint256 amountToSell, uint256 minimumAmountToBuy) external {
-        (uint256 ethAmount, )  = _postSell(tokenSell, amountToSell);
-        (uint256 tokenAmount, ) = _preBuy(tokenBuy, ethAmount);
+        (uint256 ethAmount, uint256 sellPrice)  = _postSell(tokenSell, amountToSell);
+        (uint256 tokenAmount, uint256 buyPrice) = _preBuy(tokenBuy, ethAmount);
         require(tokenAmount >= minimumAmountToBuy, "Insufficient output amount");
         receiveERC20(tokenSell, msg.sender, amountToSell);
         sendERC20(tokenBuy, msg.sender, tokenAmount);
-        emit SwapTrade(tokenSell, tokenBuy, msg.sender, amountToSell, tokenAmount);
+        emit SwapTrade(tokenSell, tokenBuy, msg.sender, amountToSell, tokenAmount, sellPrice, buyPrice);
     }
 
 }
