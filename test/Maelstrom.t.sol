@@ -110,7 +110,7 @@ contract MaelstromTest is Test {
         uint256 bobTokensBefore = tokenA.balanceOf(bob);        
         vm.expectEmit(true, true, true, true);
         emit BuyTrade(address(tokenA), bob, ethAmount, expectedTokenAmount, avgPrice);
-        maelstrom.buy{value: ethAmount}(address(tokenA));
+        maelstrom.buy{value: ethAmount}(address(tokenA),expectedTokenAmount);
         uint256 bobTokensAfter = tokenA.balanceOf(bob);
         console.log("Bob's tokens after:", bobTokensAfter);
         console.log("Actual tokens received:", bobTokensAfter - bobTokensBefore);
@@ -142,7 +142,7 @@ contract MaelstromTest is Test {
         uint256 bobEthBefore = bob.balance;
         vm.expectEmit(true, true, true, true);
         emit SellTrade(address(tokenA), bob, tokenAmount, expectedEthAmount, avgPrice);
-        maelstrom.sell(address(tokenA), tokenAmount);
+        maelstrom.sell(address(tokenA), tokenAmount, expectedEthAmount);
         uint256 bobEthAfter = bob.balance;
         assertEq(bobEthAfter - bobEthBefore, expectedEthAmount);
         vm.stopPrank();
@@ -166,9 +166,9 @@ contract MaelstromTest is Test {
         // Make a trade to set up price decay
         vm.warp(block.timestamp + 3600); 
         vm.startPrank(bob);
-        maelstrom.buy{value: 1 ether}(address(tokenA));
+        maelstrom.buy{value: 1 ether}(address(tokenA),1 * 10**18);
         tokenA.approve(address(maelstrom), 1 * 10**18);
-        maelstrom.sell(address(tokenA), 1 * 10**17);
+        maelstrom.sell(address(tokenA), 1 * 10**17,1 * 10**17);
         vm.stopPrank();
         uint256 priceAfterTrade = maelstrom.priceBuy(address(tokenA));
         // Skip forward in time
@@ -341,13 +341,13 @@ contract MaelstromTest is Test {
         uint256 largeEthAmount = 10 ether; // This would try to buy more than available
         vm.prank(bob);
         vm.expectRevert("Not more than 10% of tokens in pool can be used for swap");
-        maelstrom.buy{value: largeEthAmount}(address(tokenA));
+        maelstrom.buy{value: largeEthAmount}(address(tokenA),10 * 10**18);
         // Try to sell more than 10% of ETH in pool
         uint256 largeTokenAmount = 10 * 10**18; // This would try to drain more than 10% of ETH
         vm.startPrank(bob);
         tokenA.approve(address(maelstrom), largeTokenAmount);
         vm.expectRevert("Not more than 10% of eth in pool can be used for swap");
-        maelstrom.sell(address(tokenA), largeTokenAmount);
+        maelstrom.sell(address(tokenA), largeTokenAmount,1 ether);
         vm.stopPrank();
     }
 
@@ -477,7 +477,7 @@ contract MaelstromTest is Test {
         uint256 expectedTokenAmount = (ethAmount * 1e18) / buyPrice;
         vm.startPrank(bob);
         uint256 bobTokensBefore = tokenA.balanceOf(bob);
-        maelstrom.buy{value: ethAmount}(address(tokenA));
+        maelstrom.buy{value: ethAmount}(address(tokenA),expectedTokenAmount);
         uint256 bobTokensAfter = tokenA.balanceOf(bob);
         assertEq(bobTokensAfter - bobTokensBefore, expectedTokenAmount);
         vm.stopPrank();
