@@ -49,6 +49,7 @@ contract Maelstrom {
     ProtocolParameters protocolParameters;
 
     constructor(address _protocolParametersAddress) {
+        require(_protocolParametersAddress != address(0));
         protocolParameters = ProtocolParameters(_protocolParametersAddress);
     }
     
