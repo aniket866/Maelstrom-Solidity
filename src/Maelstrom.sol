@@ -5,7 +5,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {LiquidityPoolToken} from "./LiquidityPoolToken.sol";
-import {SD59x18,exp} from "prb-math/src/SD59x18.sol";
+import { SD59x18, exp } from "prb-math/contracts/SD59x18.sol";
 import {ProtocolParameters} from "./ProtocolParameters.sol";
 
 contract Maelstrom {
