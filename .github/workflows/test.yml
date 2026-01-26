@@ -27,10 +27,17 @@ jobs:
         run: |
           forge --version
 
-      - name: Run Forge fmt
+      # Added: Setup Node.js environment for Prettier
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Prettier
         run: |
-          forge fmt --check
-        id: fmt
+          npm install prettier prettier-plugin-solidity
+          npx prettier --check "**/*.sol"
+        id: prettier
 
       - name: Run Forge build
         run: |
