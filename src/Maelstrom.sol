@@ -76,6 +76,7 @@ contract Maelstrom {
     function _getSubArray(address[] memory array, uint256 start, uint256 end) internal pure returns (address[] memory) {
         require(start <= end, "Invalid start or end index");
         if (array.length == 0) return new address[](0);
+        require(start < array.length, "Start index out of bounds");
         end = end >= array.length ? array.length - 1 : end;
         address[] memory subArray = new address[](end - start + 1);
         for (uint256 i = start; i <= end; i++) {
