@@ -302,14 +302,11 @@ contract Maelstrom {
         if (pt.balanceOf(msg.sender) == 0) {
             address[] storage currentPools = userPools[msg.sender];
             mapping(address => uint256) storage poolIndex = userPoolIndex[msg.sender];
-
             uint256 indexToRemove = poolIndex[token] - 1;
             uint256 lastIndex = currentPools.length - 1;
-
             if (indexToRemove != lastIndex) {
                 address lastToken = currentPools[lastIndex];
                 currentPools[indexToRemove] = lastToken;
-
                 // Update the index of the moved token (remembering it is 1-based)
                 poolIndex[lastToken] = indexToRemove + 1;
             }
