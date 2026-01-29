@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.20;
 
-
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -98,14 +97,6 @@ contract Maelstrom {
     function receiveERC20(address token, address from, uint256 amountToken) internal {
         SafeERC20.safeTransferFrom(IERC20(token), from, address(this), amountToken);
     }
-    function _getSubArray(address[] memory array, uint256 start, uint256 end)
-        internal
-        pure
-        returns (address[] memory)
-    {
-        require(array.length > 0, "Empty array");
-        require(start < array.length, "Start index out of bounds");
-
 
     function _getSubArray(address[] memory array, uint256 start, uint256 end) internal pure returns (address[] memory) {
         if (array.length == 0) {
@@ -124,7 +115,6 @@ contract Maelstrom {
         }
         return subArray;
     }
-
 
     function getPoolList(uint256 start, uint256 end) external view returns (address[] memory) {
         return _getSubArray(poolList, start, end);
@@ -162,7 +152,6 @@ contract Maelstrom {
         return poolFeesEvents[token].length;
     }
 
-
     function calculateFinalPrice(
         uint256 decayedSellVolume,
         uint256 sellPrice,
@@ -181,7 +170,7 @@ contract Maelstrom {
     function processProtocolFees(address token, uint256 totalFee) internal {
         totalFees += totalFee;
         totalPoolFees[token] += totalFee;
-        PoolFees memory newFee = PoolFees({ fee: totalFee, timestamp: block.timestamp });
+        PoolFees memory newFee = PoolFees({fee: totalFee, timestamp: block.timestamp});
         poolFeesEvents[token].push(newFee);
         uint256 stableFees = (totalFee * protocolParameters.fee()) / 10000;
         address feeRecipient = protocolParameters.treasury();
@@ -415,3 +404,4 @@ contract Maelstrom {
         );
     }
 }
+
