@@ -17,10 +17,6 @@ This project is built using **Foundry** and uses **Node.js** for linting and for
 
 1.  **Fork the repository** on GitHub.
 2.  **Clone your fork** locally:
-    ```bash
-    git clone (https://github.com/YOUR_USERNAME/Maelstrom-Solidity.git)
-    cd Maelstrom-Solidity
-    ```
 3.  **Install Submodules (Foundry)**:
     ```bash
     forge install
