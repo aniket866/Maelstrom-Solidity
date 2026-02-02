@@ -26,8 +26,8 @@ contract Maelstrom {
     }
 
     struct PoolFees {
-        uint256 fee;
-        uint256 timestamp;
+        uint192 fee;
+        uint64 timestamp;
     }
     event PoolInitialized(address indexed token, uint256 amountToken, uint256 amountEther, uint256 initialPriceBuy, uint256 initialPriceSell);
     event BuyTrade(address indexed token, address indexed trader, uint256 amountEther, uint256 amountToken, uint256 tradeBuyPrice, uint256 updatedBuyPrice, uint256 sellPrice);
@@ -133,7 +133,7 @@ contract Maelstrom {
     function processProtocolFees(address token, uint256 totalFee) internal {
         totalFees += totalFee;
         totalPoolFees[token] += totalFee;
-        PoolFees memory newFee = PoolFees({ fee: totalFee, timestamp: block.timestamp });
+        PoolFees memory newFee = PoolFees({ fee: uint192(totalFee), timestamp: uint64(block.timestamp) });
         poolFeesEvents[token].push(newFee);
         uint256 stableFees = (totalFee * protocolParameters.fee()) / 10000;
         address feeRecipient = protocolParameters.treasury();
