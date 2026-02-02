@@ -100,7 +100,8 @@ contract MaelstromTest is Test {
         vm.startPrank(bob);
         uint256 bobTokensBefore = tokenA.balanceOf(bob);
         
-        // Execute the buy
+        vm.expectEmit(true, true, true, false);
+        emit BuyTrade(address(tokenA), address(bob), ethAmount, expectedTokenAmount, currentBuyPrice, 0, 0);
         maelstrom.buy{ value: ethAmount }(address(tokenA), expectedTokenAmount);
         
         // Verify results
@@ -110,8 +111,6 @@ contract MaelstromTest is Test {
         
         console.log("Bob's tokens after:", bobTokensAfter);
         console.log("Actual tokens received:", bobTokensAfter - bobTokensBefore);
-        console.log("Updated buy price:", updatedBuyPrice);
-        console.log("Updated sell price:", updatedSellPrice);
         
         assertEq(bobTokensAfter - bobTokensBefore, expectedTokenAmount);
         vm.stopPrank();
