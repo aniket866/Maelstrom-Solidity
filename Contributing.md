@@ -74,3 +74,4 @@ We use Foundry for testing. Please ensure all tests pass before submitting your 
 Create a new branch for your feature or fix. Do not work directly on `main`.
 ```bash
 git checkout -b feature/amazing-feature
+```
