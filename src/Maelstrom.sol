@@ -26,7 +26,7 @@ contract Maelstrom {
     }
 
     struct PoolFees {
-        uint192 fee;
+        uint256 fee;
         uint64 timestamp;
     }
     event PoolInitialized(address indexed token, uint256 amountToken, uint256 amountEther, uint256 initialPriceBuy, uint256 initialPriceSell);
@@ -74,8 +74,9 @@ contract Maelstrom {
     }
 
     function _getSubArray(address[] memory array, uint256 start, uint256 end) internal pure returns (address[] memory) {
+        require(array.length > 0, "Empty array");
+        require(start < array.length, "Start index out of bounds");
         require(start <= end, "Invalid start or end index");
-        if (array.length == 0) return new address[](0);
         end = end >= array.length ? array.length - 1 : end;
         address[] memory subArray = new address[](end - start + 1);
         for (uint256 i = start; i <= end; i++) {
@@ -126,14 +127,14 @@ contract Maelstrom {
     }
 
     function _getDecayValue(uint256 initialVolume, int256 timeElapsed) internal pure returns (uint256) {
-        int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap((int256)(initialVolume)) * exp(SD59x18.wrap(-timeElapsed)));
+        int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap((int256)(initialVolume)) * exp(SD59x18.wrap(-timeElapsed * 1e18)));
         return (uint256)(decayedAmount);
     }
 
     function processProtocolFees(address token, uint256 totalFee) internal {
         totalFees += totalFee;
         totalPoolFees[token] += totalFee;
-        PoolFees memory newFee = PoolFees({ fee: uint192(totalFee), timestamp: uint64(block.timestamp) });
+        PoolFees memory newFee = PoolFees({ fee: totalFee, timestamp: uint64(block.timestamp) });
         poolFeesEvents[token].push(newFee);
         uint256 stableFees = (totalFee * protocolParameters.fee()) / 10000;
         address feeRecipient = protocolParameters.treasury();
