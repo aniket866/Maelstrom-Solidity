@@ -27,7 +27,7 @@ contract Maelstrom {
 
     struct PoolFees {
         uint256 fee;
-        uint64 timestamp;
+        uint64 timestamp; 
     }
     event PoolInitialized(address indexed token, uint256 amountToken, uint256 amountEther, uint256 initialPriceBuy, uint256 initialPriceSell);
     event BuyTrade(address indexed token, address indexed trader, uint256 amountEther, uint256 amountToken, uint256 tradeBuyPrice, uint256 updatedBuyPrice, uint256 sellPrice);
@@ -37,6 +37,7 @@ contract Maelstrom {
     event Withdraw(address indexed token, address indexed user, uint256 amountEther, uint256 amountToken, uint256 lpTokensBurned);
     uint256 public auctionResetPercentage = 5;
     uint256 public totalFees = 0;
+    int256 public decayRate = 1e15; 
     address[] public poolList;
     mapping(address => uint256) public totalPoolFees;
     mapping(address => PoolFees[]) public poolFeesEvents;
@@ -126,8 +127,12 @@ contract Maelstrom {
         return (decayedSellVolume * sellPrice + decayedBuyVolume * buyPrice) / (decayedSellVolume + decayedBuyVolume);
     }
 
-    function _getDecayValue(uint256 initialVolume, int256 timeElapsed) internal pure returns (uint256) {
-        int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap((int256)(initialVolume)) * exp(SD59x18.wrap(-timeElapsed * 1e18)));
+    function _getDecayValue(uint256 initialVolume, int256 timeElapsed) internal view returns (uint256) {
+        SD59x18 t = SD59x18.wrap(timeElapsed * 1e18);        
+        SD59x18 lambda = SD59x18.wrap(decayRate);
+        SD59x18 exponent = lambda.mul(t);
+        SD59x18 decayFactor = exp(exponent.neg());
+        int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap(int256(initialVolume)).mul(decayFactor));
         return (uint256)(decayedAmount);
     }
 
@@ -157,8 +162,8 @@ contract Maelstrom {
         pool.finalBuyPrice = calculateFinalPrice(newDecayedSellVolume, newInitialSellPrice, decayedBuyVolume, pool.initialBuyPrice);
         pool.finalSellPrice = pool.finalBuyPrice;
         pool.decayedSellTime = (((block.timestamp - pool.lastSellTimestamp) * amountToken) + (pool.decayedSellTime * decayedSellVolume)) / (amountToken + decayedSellVolume);
-        pool.lastSellTimestamp = block.timestamp;
-        pool.lastExchangeTimestamp = block.timestamp;
+        pool.lastSellTimestamp = uint64(block.timestamp);
+        pool.lastExchangeTimestamp = uint64(block.timestamp);
     }
 
     function updatePriceBuyParams(address token, uint256 amountToken, uint256 newPrice) internal {
@@ -176,8 +181,8 @@ contract Maelstrom {
         pool.finalBuyPrice = calculateFinalPrice(decayedSellVolume, pool.initialSellPrice, newDecayedBuyVolume, newInitialBuyPrice);
         pool.finalSellPrice = pool.finalBuyPrice;
         pool.decayedBuyTime = (((block.timestamp - pool.lastBuyTimestamp) * amountToken) + (pool.decayedBuyTime * decayedBuyVolume)) / (amountToken + decayedBuyVolume);
-        pool.lastBuyTimestamp = block.timestamp;
-        pool.lastExchangeTimestamp = block.timestamp;
+        pool.lastBuyTimestamp = uint64(block.timestamp);
+        pool.lastExchangeTimestamp = uint64(block.timestamp);
     }
 
     function _postSell(address token, uint256 amountToken) internal returns (uint256, uint256) {
@@ -230,7 +235,7 @@ contract Maelstrom {
         LiquidityPoolToken lpt = new LiquidityPoolToken(tokenName, tokenSymbol);
         poolToken[token] = lpt;
         uint256 avgPrice = (initialPriceBuy + initialPriceSell) / 2;
-        pools[token] = PoolParams({ lastBuyPrice: initialPriceBuy, lastSellPrice: initialPriceSell, lastExchangeTimestamp: block.timestamp, finalBuyPrice: avgPrice, finalSellPrice: avgPrice, initialSellPrice: initialPriceSell, initialBuyPrice: initialPriceBuy, lastBuyTimestamp: block.timestamp, lastSellTimestamp: block.timestamp, decayedBuyTime: 0, decayedSellTime: 0, decayedBuyVolume: 0, decayedSellVolume: 0 });
+        pools[token] = PoolParams({ lastBuyPrice: initialPriceBuy, lastSellPrice: initialPriceSell, lastExchangeTimestamp: uint64(block.timestamp), finalBuyPrice: avgPrice, finalSellPrice: avgPrice, initialSellPrice: initialPriceSell, initialBuyPrice: initialPriceBuy, lastBuyTimestamp: uint64(block.timestamp), lastSellTimestamp: uint64(block.timestamp), decayedBuyTime: 0, decayedSellTime: 0, decayedBuyVolume: 0, decayedSellVolume: 0 });
         ethBalance[token] = msg.value;
         poolToken[token].mint(msg.sender, amountToken);
         poolList.push(token);
