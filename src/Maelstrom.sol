@@ -12,17 +12,17 @@ contract Maelstrom {
     struct PoolParams {
         uint256 lastBuyPrice;
         uint256 lastSellPrice;
-        uint256 lastExchangeTimestamp;
         uint256 initialSellPrice;
         uint256 initialBuyPrice;
         uint256 finalBuyPrice;
         uint256 finalSellPrice;
-        uint256 lastBuyTimestamp;
-        uint256 lastSellTimestamp;
-        uint256 decayedBuyTime;
-        uint256 decayedSellTime;
         uint256 decayedBuyVolume;
         uint256 decayedSellVolume;
+        uint64 lastExchangeTimestamp;
+        uint64 lastBuyTimestamp;
+        uint64 lastSellTimestamp;
+        uint64 decayedBuyTime;
+        uint64 decayedSellTime; 
     }
 
     struct PoolFees {
