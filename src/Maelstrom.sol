@@ -133,7 +133,7 @@ contract Maelstrom {
         SD59x18 exponent = lambda.mul(t);
         SD59x18 decayFactor = exp(exponent.neg());
         int256 decayedAmount = SD59x18.unwrap(SD59x18.wrap(int256(initialVolume)).mul(decayFactor));
-        return (uint256)(decayedAmount);
+        return decayedAmount < 0 ? 0 : uint256(decayedAmount);
     }
 
     function processProtocolFees(address token, uint256 totalFee) internal {
